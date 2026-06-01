@@ -12,13 +12,6 @@ function getExpectedReturn(scenario) {
   );
 }
 
-function getMortgagePayment(principal, annualRate, termYears) {
-  if (annualRate === 0) return principal / (termYears * 12);
-  const r = annualRate / 100 / 12;
-  const n = termYears * 12;
-  return principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-}
-
 function getAnnualContributionLimits(locationKey) {
   const loc = LOCATIONS[locationKey];
   if (!loc) return { taxDeferred: 23000, taxFree: 7000 };
@@ -26,6 +19,17 @@ function getAnnualContributionLimits(locationKey) {
     return { taxDeferred: 31560, taxFree: 7000 };
   }
   return { taxDeferred: 23000, taxFree: 7000 };
+}
+
+function getAnnualExpensesAtAge(scenario, age, yearsFromNow, inflation) {
+  const categories = scenario.expenseCategories || [];
+  let total = 0;
+  for (const cat of categories) {
+    if (age >= cat.startAge && age <= cat.endAge && cat.monthly > 0) {
+      total += cat.monthly * 12;
+    }
+  }
+  return total * Math.pow(1 + inflation, yearsFromNow);
 }
 
 export function runProjection(scenario) {
@@ -42,19 +46,6 @@ export function runProjection(scenario) {
   let taxableBalance = scenario.currentSavings * (scenario.taxablePercent / 100);
   let taxableCostBasis = taxableBalance;
 
-  let homeEquity = 0;
-  let mortgageBalance = 0;
-  let monthlyMortgagePayment = 0;
-  let mortgageYearsRemaining = 0;
-
-  if (scenario.housingType === 'buy') {
-    const downPayment = scenario.homePrice * (scenario.downPaymentPercent / 100);
-    mortgageBalance = scenario.homePrice - downPayment;
-    homeEquity = downPayment;
-    monthlyMortgagePayment = getMortgagePayment(mortgageBalance, scenario.mortgageRate, scenario.mortgageTerm);
-    mortgageYearsRemaining = scenario.mortgageTerm;
-  }
-
   const yearlyData = [];
   let moneyRunsOutAge = null;
 
@@ -69,9 +60,9 @@ export function runProjection(scenario) {
     let taxableContrib = 0;
     let govBenefits = 0;
     let totalTax = 0;
-    let expenses = 0;
-    let housingCost = 0;
     let savings = 0;
+
+    const expenses = getAnnualExpensesAtAge(scenario, age, yearsFromNow, inflation);
 
     if (!isRetired) {
       const mySalary = scenario.salary * Math.pow(1 + salaryGrowth, yearsFromNow);
@@ -94,29 +85,14 @@ export function runProjection(scenario) {
       const taxResult = calculateAnnualTax(grossIncome, scenario.location, scenario.filingStatus, taxDeferredContrib);
       totalTax = taxResult.totalTax;
 
-      const baseExpenses = scenario.annualExpenses * Math.pow(1 + inflation, yearsFromNow);
-      expenses = baseExpenses;
-
-      if (scenario.housingType === 'rent') {
-        housingCost = scenario.monthlyRent * 12 * Math.pow(1 + inflation, yearsFromNow);
-      } else if (scenario.housingType === 'buy') {
-        const mortgageAnnual = mortgageYearsRemaining > 0 ? monthlyMortgagePayment * 12 : 0;
-        const homeValue = scenario.homePrice * Math.pow(1 + scenario.homeAppreciation / 100, yearsFromNow);
-        const propertyTax = homeValue * (scenario.propertyTaxRate / 100);
-        const maintenance = homeValue * 0.01;
-        housingCost = mortgageAnnual + propertyTax + maintenance;
-      }
-
       const netIncome = grossIncome - totalTax;
-      savings = netIncome - expenses - housingCost;
+      savings = netIncome - expenses;
 
       taxDeferredBalance += taxDeferredContrib;
       taxFreeBalance += taxFreeContrib;
       taxableBalance += taxableContrib;
       taxableCostBasis += taxableContrib;
     } else {
-      const yearsRetired = age - scenario.retirementAge;
-
       if (isCanada) {
         if (age >= 65) {
           govBenefits += scenario.cppMonthly * 12;
@@ -135,23 +111,7 @@ export function runProjection(scenario) {
 
       govBenefits *= Math.pow(1 + inflation, yearsFromNow);
 
-      const baseRetirementExpenses = scenario.annualExpenses *
-        (scenario.retirementExpensePercent / 100) *
-        Math.pow(1 + inflation, yearsFromNow);
-      const healthcareCost = scenario.healthcareMonthlyCost * 12 * Math.pow(1 + inflation * 1.5, yearsRetired);
-      expenses = baseRetirementExpenses + healthcareCost;
-
-      if (scenario.housingType === 'buy') {
-        const homeValue = scenario.homePrice * Math.pow(1 + scenario.homeAppreciation / 100, yearsFromNow);
-        const mortgageAnnual = mortgageYearsRemaining > 0 ? monthlyMortgagePayment * 12 : 0;
-        const propertyTax = homeValue * (scenario.propertyTaxRate / 100);
-        const maintenance = homeValue * 0.01;
-        housingCost = mortgageAnnual + propertyTax + maintenance;
-      } else {
-        housingCost = scenario.monthlyRent * 12 * Math.pow(1 + inflation, yearsFromNow);
-      }
-
-      const totalNeeded = expenses + housingCost;
+      const totalNeeded = expenses;
       let remainingNeeded = Math.max(0, totalNeeded - govBenefits);
       let withdrawals = { taxable: 0, taxDeferred: 0, taxFree: 0 };
 
@@ -195,34 +155,19 @@ export function runProjection(scenario) {
     taxFreeBalance *= (1 + returnRate);
     taxableBalance *= (1 + returnRate);
 
-    if (scenario.housingType === 'buy' && mortgageYearsRemaining > 0) {
-      const annualMortgage = monthlyMortgagePayment * 12;
-      const interestPaid = mortgageBalance * (scenario.mortgageRate / 100);
-      const principalPaid = Math.min(annualMortgage - interestPaid, mortgageBalance);
-      mortgageBalance = Math.max(0, mortgageBalance - principalPaid);
-      mortgageYearsRemaining--;
-    }
-
-    if (scenario.housingType === 'buy') {
-      homeEquity = scenario.homePrice * Math.pow(1 + scenario.homeAppreciation / 100, yearsFromNow + 1) - mortgageBalance;
-    }
-
-    const investmentNetWorth = taxDeferredBalance + taxFreeBalance + taxableBalance;
-    const totalNetWorth = investmentNetWorth + homeEquity;
+    const totalNetWorth = taxDeferredBalance + taxFreeBalance + taxableBalance;
 
     yearlyData.push({
       age,
       year,
       grossIncome: Math.round(grossIncome),
       totalTax: Math.round(totalTax),
-      expenses: Math.round(expenses + housingCost),
+      expenses: Math.round(expenses),
       savings: Math.round(savings),
       govBenefits: Math.round(govBenefits),
       taxDeferredBalance: Math.round(taxDeferredBalance),
       taxFreeBalance: Math.round(taxFreeBalance),
       taxableBalance: Math.round(taxableBalance),
-      homeEquity: Math.round(homeEquity),
-      investmentNetWorth: Math.round(investmentNetWorth),
       totalNetWorth: Math.round(totalNetWorth),
       isRetired,
     });
@@ -230,8 +175,7 @@ export function runProjection(scenario) {
 
   const retirementYearData = yearlyData.find(d => d.age === scenario.retirementAge);
   const lastYearData = yearlyData[yearlyData.length - 1];
-  const retirementSavings = retirementYearData ? retirementYearData.investmentNetWorth : 0;
-  const retirementNetWorth = retirementYearData ? retirementYearData.totalNetWorth : 0;
+  const retirementSavings = retirementYearData ? retirementYearData.totalNetWorth : 0;
 
   const yearsOfRetirement = scenario.lifeExpectancy - scenario.retirementAge;
   const yearsFunded = moneyRunsOutAge
@@ -245,7 +189,7 @@ export function runProjection(scenario) {
 
   const retirementExpenses = retirementYearData
     ? retirementYearData.expenses
-    : scenario.annualExpenses * (scenario.retirementExpensePercent / 100);
+    : getAnnualExpensesAtAge(scenario, scenario.retirementAge, scenario.retirementAge - scenario.currentAge, inflation);
   const govBenefitsAtRetirement = retirementYearData ? retirementYearData.govBenefits : 0;
   const incomeGap = Math.max(0, retirementExpenses - annualSafeWithdrawal - govBenefitsAtRetirement);
 
@@ -256,11 +200,15 @@ export function runProjection(scenario) {
     scenario.monthlyContribution * 12 * (scenario.taxDeferredPercent / 100)
   );
 
+  // Calculate current monthly total for display
+  const currentMonthlyExpenses = (scenario.expenseCategories || [])
+    .filter(cat => scenario.currentAge >= cat.startAge && scenario.currentAge <= cat.endAge)
+    .reduce((sum, cat) => sum + cat.monthly, 0);
+
   return {
     yearlyData,
     summary: {
       retirementSavings,
-      retirementNetWorth,
       monthlyRetirementIncome: Math.round(monthlyRetirementIncome),
       yearsFunded,
       fundedPercentage: Math.round(fundedPercentage),
@@ -270,6 +218,7 @@ export function runProjection(scenario) {
       incomeGap: Math.round(incomeGap),
       currentEffectiveTaxRate: taxAtRetirement.effectiveRate,
       finalNetWorth: lastYearData ? lastYearData.totalNetWorth : 0,
+      currentMonthlyExpenses,
     },
   };
 }

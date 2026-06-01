@@ -51,7 +51,7 @@ function SingleScenarioView({ scenario }) {
         <StatCard
           label="Savings at Retirement"
           value={formatCurrency(summary.retirementSavings, sym)}
-          subtitle={`Total net worth: ${formatCurrency(summary.retirementNetWorth, sym)}`}
+          subtitle={`Age ${scenario.retirementAge}`}
           color="primary"
           icon={PiggyBank}
         />
@@ -102,10 +102,6 @@ function SingleScenarioView({ scenario }) {
                 <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
                 <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
               </linearGradient>
-              <linearGradient id="homeEquityGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
-              </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="age" tick={{ fontSize: 11 }} stroke="#94a3b8" />
@@ -116,10 +112,7 @@ function SingleScenarioView({ scenario }) {
             />
             <Tooltip content={<CustomTooltip symbol={sym} />} />
             <ReferenceLine x={scenario.retirementAge} stroke="#f59e0b" strokeDasharray="6 3" label={{ value: 'Retirement', fontSize: 11, fill: '#d97706' }} />
-            <Area type="monotone" dataKey="investmentNetWorth" name="Investments" stroke="#3b82f6" fill="url(#netWorthGrad)" strokeWidth={2} />
-            {scenario.housingType === 'buy' && (
-              <Area type="monotone" dataKey="homeEquity" name="Home Equity" stroke="#10b981" fill="url(#homeEquityGrad)" strokeWidth={2} />
-            )}
+            <Area type="monotone" dataKey="totalNetWorth" name="Net Worth" stroke="#3b82f6" fill="url(#netWorthGrad)" strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       </ChartCard>

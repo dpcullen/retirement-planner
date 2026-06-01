@@ -18,16 +18,29 @@ export const SCENARIO_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e'];
 
 let scenarioCounter = 0;
 
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  { id: 'exp-1', name: 'Housing (rent/mortgage)', monthly: 2000 },
+  { id: 'exp-2', name: 'Food & Groceries', monthly: 600 },
+  { id: 'exp-3', name: 'Transportation', monthly: 400 },
+  { id: 'exp-4', name: 'Utilities & Bills', monthly: 250 },
+  { id: 'exp-5', name: 'Healthcare', monthly: 200 },
+  { id: 'exp-6', name: 'Travel & Leisure', monthly: 300 },
+  { id: 'exp-7', name: 'Children & Childcare', monthly: 0, endAge: 40 },
+  { id: 'exp-8', name: 'Other', monthly: 500 },
+];
+
 export function createDefaultScenario(name, color) {
   scenarioCounter++;
+  const currentAge = 30;
+  const lifeExpectancy = 90;
   return {
     id: `scenario-${Date.now()}-${scenarioCounter}`,
     name: name || 'Base Case',
     color: color || SCENARIO_COLORS[0],
 
-    currentAge: 30,
+    currentAge,
     retirementAge: 65,
-    lifeExpectancy: 90,
+    lifeExpectancy,
     filingStatus: 'single',
 
     salary: 100000,
@@ -38,19 +51,12 @@ export function createDefaultScenario(name, color) {
     cppMonthly: 1200,
     oasMonthly: 700,
 
-    annualExpenses: 50000,
-    retirementExpensePercent: 80,
     inflationRate: 2.5,
-    healthcareMonthlyCost: 500,
-
-    housingType: 'rent',
-    monthlyRent: 2000,
-    homePrice: 500000,
-    downPaymentPercent: 20,
-    mortgageRate: 6.5,
-    mortgageTerm: 30,
-    propertyTaxRate: 1.0,
-    homeAppreciation: 3,
+    expenseCategories: DEFAULT_EXPENSE_CATEGORIES.map(cat => ({
+      ...cat,
+      startAge: currentAge,
+      endAge: cat.endAge || lifeExpectancy,
+    })),
 
     currentSavings: 50000,
     monthlyContribution: 1500,

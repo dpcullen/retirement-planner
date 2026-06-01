@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Info, ChevronDown, ChevronUp } from 'lucide-react';
 
 export function Card({ children, className = '' }) {
@@ -34,38 +34,65 @@ export function SectionHeader({ title, subtitle, icon: Icon, isOpen, onToggle })
 
 export function InputField({ label, value, onChange, type = 'number', prefix, suffix, tooltip, min, max, step, className = '' }) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [localValue, setLocalValue] = useState(String(value));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setLocalValue(String(value));
+    }
+  }, [value, isFocused]);
+
+  const handleFocus = (e) => {
+    setIsFocused(true);
+    e.target.select();
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    const num = parseFloat(localValue);
+    onChange(isNaN(num) ? 0 : num);
+  };
+
+  const handleChange = (e) => {
+    setLocalValue(e.target.value);
+  };
+
+  const isNumeric = type === 'number';
 
   return (
     <div className={`space-y-1 ${className}`}>
-      <div className="flex items-center gap-1">
-        <label className="text-xs font-medium text-slate-600">{label}</label>
-        {tooltip && (
-          <div className="relative">
-            <Info
-              className="w-3.5 h-3.5 text-slate-300 cursor-help"
-              onMouseEnter={() => setShowTooltip(true)}
-              onMouseLeave={() => setShowTooltip(false)}
-            />
-            {showTooltip && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap z-50 max-w-[240px] whitespace-normal">
-                {tooltip}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {label && (
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-slate-600">{label}</label>
+          {tooltip && (
+            <div className="relative">
+              <Info
+                className="w-3.5 h-3.5 text-slate-300 cursor-help"
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
+              />
+              {showTooltip && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg z-50 max-w-[240px] whitespace-normal">
+                  {tooltip}
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <div className="relative flex items-center">
         {prefix && (
           <span className="absolute left-3 text-slate-400 text-sm pointer-events-none">{prefix}</span>
         )}
         <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-          min={min}
-          max={max}
-          step={step || 1}
+          type={isNumeric ? 'text' : type}
+          inputMode={isNumeric ? 'decimal' : undefined}
+          value={isNumeric ? (isFocused ? localValue : value) : value}
+          onFocus={isNumeric ? handleFocus : undefined}
+          onBlur={isNumeric ? handleBlur : undefined}
+          onChange={isNumeric ? handleChange : (e) => onChange(e.target.value)}
           className={`w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700
             focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 transition-all
             ${prefix ? 'pl-7' : ''} ${suffix ? 'pr-8' : ''}`}

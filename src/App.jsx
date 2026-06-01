@@ -1,18 +1,51 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Calculator, Download, Upload } from 'lucide-react';
-import { createDefaultScenario, SCENARIO_COLORS } from './data/defaults';
+import { createDefaultScenario, SCENARIO_COLORS, DEFAULT_EXPENSE_CATEGORIES } from './data/defaults';
 import ScenarioManager from './components/ScenarioManager';
 import InputPanel from './components/InputPanel';
 import ResultsDashboard from './components/ResultsDashboard';
 
 const STORAGE_KEY = 'retirement-planner-scenarios';
 
+function migrateScenario(s) {
+  if (!s.expenseCategories) {
+    const monthly = Math.round((s.annualExpenses || 50000) / 12);
+    s.expenseCategories = DEFAULT_EXPENSE_CATEGORIES.map(cat => ({
+      ...cat,
+      monthly: cat.id === 'exp-1' ? Math.round(monthly * 0.40) :
+               cat.id === 'exp-2' ? Math.round(monthly * 0.15) :
+               cat.id === 'exp-3' ? Math.round(monthly * 0.10) :
+               cat.id === 'exp-4' ? Math.round(monthly * 0.06) :
+               cat.id === 'exp-5' ? Math.round(monthly * 0.05) :
+               cat.id === 'exp-6' ? Math.round(monthly * 0.08) :
+               cat.id === 'exp-7' ? 0 :
+               Math.round(monthly * 0.16),
+      startAge: s.currentAge || 30,
+      endAge: cat.endAge || s.lifeExpectancy || 90,
+    }));
+    delete s.annualExpenses;
+    delete s.retirementExpensePercent;
+    delete s.healthcareMonthlyCost;
+  }
+  delete s.housingType;
+  delete s.monthlyRent;
+  delete s.homePrice;
+  delete s.downPaymentPercent;
+  delete s.mortgageRate;
+  delete s.mortgageTerm;
+  delete s.propertyTaxRate;
+  delete s.homeAppreciation;
+  return s;
+}
+
 function loadScenarios() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(migrateScenario);
+      }
     }
   } catch {}
   return [createDefaultScenario('Base Case', SCENARIO_COLORS[0])];

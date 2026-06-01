@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { User, DollarSign, Home, TrendingUp, MapPin, Receipt } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { User, DollarSign, TrendingUp, MapPin, Receipt, Plus, X } from 'lucide-react';
 import { Card, SectionHeader, InputField, SelectField, ToggleGroup, SliderField } from './ui';
 import { LOCATIONS } from '../data/defaults';
+import { formatCurrencyFull } from '../utils/formatters';
 
 const locationOptions = Object.entries(LOCATIONS).map(([key, loc]) => ({
   value: key,
@@ -24,6 +25,74 @@ function Section({ title, subtitle, icon, defaultOpen = false, children }) {
   );
 }
 
+function CompactNumberInput({ value, onChange, prefix, className = '' }) {
+  const [localValue, setLocalValue] = useState(String(value));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) setLocalValue(String(value));
+  }, [value, isFocused]);
+
+  return (
+    <div className={`relative flex items-center ${className}`}>
+      {prefix && (
+        <span className="absolute left-2 text-slate-400 text-xs pointer-events-none">{prefix}</span>
+      )}
+      <input
+        type="text"
+        inputMode="decimal"
+        value={isFocused ? localValue : value}
+        onFocus={(e) => { setIsFocused(true); e.target.select(); }}
+        onBlur={() => { setIsFocused(false); onChange(parseFloat(localValue) || 0); }}
+        onChange={(e) => setLocalValue(e.target.value)}
+        className={`w-full rounded border border-slate-200 bg-white py-1.5 text-xs text-slate-700
+          focus:outline-none focus:ring-1 focus:ring-primary-400 focus:border-primary-400
+          ${prefix ? 'pl-5 pr-1.5' : 'px-1.5'} text-right`}
+      />
+    </div>
+  );
+}
+
+function ExpenseCategoryRow({ cat, currencySymbol, onUpdate, onRemove }) {
+  return (
+    <div className="flex items-center gap-1.5 p-2 rounded-lg bg-slate-50 border border-slate-100 group">
+      <input
+        type="text"
+        value={cat.name}
+        onChange={(e) => onUpdate('name', e.target.value)}
+        className="flex-1 min-w-0 text-xs font-medium text-slate-700 bg-transparent border-none outline-none truncate"
+        placeholder="Category name"
+      />
+      <CompactNumberInput
+        value={cat.monthly}
+        onChange={(v) => onUpdate('monthly', v)}
+        prefix={currencySymbol}
+        className="w-20 flex-shrink-0"
+      />
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+        <CompactNumberInput
+          value={cat.startAge}
+          onChange={(v) => onUpdate('startAge', v)}
+          className="w-10"
+        />
+        <span className="text-[10px] text-slate-300">to</span>
+        <CompactNumberInput
+          value={cat.endAge}
+          onChange={(v) => onUpdate('endAge', v)}
+          className="w-10"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-rose-500 flex-shrink-0"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export default function InputPanel({ scenario, onChange }) {
   const loc = LOCATIONS[scenario.location] || LOCATIONS.seattle;
   const isCanada = loc.country === 'CA';
@@ -32,6 +101,36 @@ export default function InputPanel({ scenario, onChange }) {
   function set(field) {
     return (value) => onChange({ ...scenario, [field]: value });
   }
+
+  function updateCategory(index, field, value) {
+    const updated = [...scenario.expenseCategories];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange({ ...scenario, expenseCategories: updated });
+  }
+
+  function removeCategory(index) {
+    const updated = scenario.expenseCategories.filter((_, i) => i !== index);
+    onChange({ ...scenario, expenseCategories: updated });
+  }
+
+  function addCategory() {
+    const newCat = {
+      id: `exp-${Date.now()}`,
+      name: 'New expense',
+      monthly: 0,
+      startAge: scenario.currentAge,
+      endAge: scenario.lifeExpectancy,
+    };
+    onChange({ ...scenario, expenseCategories: [...scenario.expenseCategories, newCat] });
+  }
+
+  const currentTotal = (scenario.expenseCategories || [])
+    .filter(cat => scenario.currentAge >= cat.startAge && scenario.currentAge <= cat.endAge)
+    .reduce((sum, cat) => sum + cat.monthly, 0);
+
+  const retirementTotal = (scenario.expenseCategories || [])
+    .filter(cat => scenario.retirementAge >= cat.startAge && scenario.retirementAge <= cat.endAge)
+    .reduce((sum, cat) => sum + cat.monthly, 0);
 
   return (
     <div className="space-y-3">
@@ -131,115 +230,59 @@ export default function InputPanel({ scenario, onChange }) {
         )}
       </Section>
 
-      <Section title="Expenses" subtitle="Living costs & healthcare" icon={Receipt}>
-        <InputField
-          label="Annual Living Expenses"
-          value={scenario.annualExpenses}
-          onChange={set('annualExpenses')}
-          prefix={sym}
-          tooltip="Total annual spending excluding housing"
-        />
+      <Section title="Expenses" subtitle="Monthly costs by category" icon={Receipt} defaultOpen={true}>
         <SliderField
-          label="Retirement Spending (% of current)"
-          value={scenario.retirementExpensePercent}
-          onChange={set('retirementExpensePercent')}
-          min={40}
-          max={120}
-          tooltip="Most retirees spend 70-85% of pre-retirement expenses"
+          label="Inflation Rate"
+          value={scenario.inflationRate}
+          onChange={set('inflationRate')}
+          min={0}
+          max={10}
+          step={0.5}
         />
-        <div className="grid grid-cols-2 gap-3">
-          <InputField
-            label="Inflation Rate"
-            value={scenario.inflationRate}
-            onChange={set('inflationRate')}
-            suffix="%"
-            min={0}
-            max={10}
-            step={0.1}
-          />
-          <InputField
-            label="Healthcare (monthly)"
-            value={scenario.healthcareMonthlyCost}
-            onChange={set('healthcareMonthlyCost')}
-            prefix={sym}
-            tooltip="Additional healthcare costs in retirement"
-          />
-        </div>
-      </Section>
 
-      <Section title="Housing" subtitle="Rent or buy scenario" icon={Home}>
-        <ToggleGroup
-          label="Housing Type"
-          value={scenario.housingType}
-          onChange={set('housingType')}
-          options={[
-            { value: 'rent', label: 'Rent' },
-            { value: 'buy', label: 'Buy / Own' },
-          ]}
-        />
-        {scenario.housingType === 'rent' ? (
-          <InputField
-            label="Monthly Rent"
-            value={scenario.monthlyRent}
-            onChange={set('monthlyRent')}
-            prefix={sym}
-            tooltip="Current monthly rent - will increase with inflation"
-          />
-        ) : (
-          <>
-            <InputField label="Home Price" value={scenario.homePrice} onChange={set('homePrice')} prefix={sym} />
-            <div className="grid grid-cols-2 gap-3">
-              <SliderField
-                label="Down Payment"
-                value={scenario.downPaymentPercent}
-                onChange={set('downPaymentPercent')}
-                min={5}
-                max={100}
-                step={5}
-              />
-              <InputField
-                label="Mortgage Rate"
-                value={scenario.mortgageRate}
-                onChange={set('mortgageRate')}
-                suffix="%"
-                min={0}
-                max={15}
-                step={0.1}
-              />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between px-2">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Category</span>
+            <div className="flex items-center gap-4">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">/month</span>
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[88px] text-center">Ages</span>
+              <span className="w-3.5" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <SelectField
-                label="Mortgage Term"
-                value={scenario.mortgageTerm}
-                onChange={(v) => set('mortgageTerm')(Number(v))}
-                options={[
-                  { value: 15, label: '15 years' },
-                  { value: 20, label: '20 years' },
-                  { value: 25, label: '25 years' },
-                  { value: 30, label: '30 years' },
-                ]}
-              />
-              <InputField
-                label="Property Tax Rate"
-                value={scenario.propertyTaxRate}
-                onChange={set('propertyTaxRate')}
-                suffix="%"
-                min={0}
-                max={5}
-                step={0.1}
-              />
-            </div>
-            <SliderField
-              label="Home Appreciation"
-              value={scenario.homeAppreciation}
-              onChange={set('homeAppreciation')}
-              min={0}
-              max={8}
-              step={0.5}
-              suffix="% / yr"
+          </div>
+
+          {(scenario.expenseCategories || []).map((cat, i) => (
+            <ExpenseCategoryRow
+              key={cat.id}
+              cat={cat}
+              currencySymbol={sym}
+              onUpdate={(field, value) => updateCategory(i, field, value)}
+              onRemove={() => removeCategory(i)}
             />
-          </>
-        )}
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={addCategory}
+          className="flex items-center gap-1.5 text-xs text-primary-500 hover:text-primary-600 font-medium px-2 py-1.5 rounded-lg hover:bg-primary-50 transition-all"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add category
+        </button>
+
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Now (age {scenario.currentAge})</span>
+            <span className="font-semibold text-slate-700">{formatCurrencyFull(currentTotal, sym)}/mo &middot; {formatCurrencyFull(currentTotal * 12, sym)}/yr</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">At retirement (age {scenario.retirementAge})</span>
+            <span className="font-semibold text-slate-700">{formatCurrencyFull(retirementTotal, sym)}/mo &middot; {formatCurrencyFull(retirementTotal * 12, sym)}/yr</span>
+          </div>
+          <p className="text-[10px] text-slate-400 pt-1">
+            Before inflation. Amounts grow at {scenario.inflationRate}% per year.
+          </p>
+        </div>
       </Section>
 
       <Section title="Investments" subtitle="Savings & asset allocation" icon={TrendingUp}>
