@@ -57,8 +57,8 @@ function SingleScenarioView({ scenario }) {
         />
         <StatCard
           label="Monthly Income (4% Rule)"
-          value={formatCurrency(summary.monthlyRetirementIncome * 12, sym)}
-          subtitle={`${formatCurrencyFull(summary.monthlyRetirementIncome, sym)}/month from investments`}
+          value={formatCurrencyFull(summary.monthlyRetirementIncome, sym)}
+          subtitle={`${formatCurrency(summary.annualSafeWithdrawal, sym)}/year from investments`}
           color="emerald"
           icon={Wallet}
         />
@@ -81,7 +81,7 @@ function SingleScenarioView({ scenario }) {
         <StatCard
           label="Effective Tax Rate"
           value={formatPercent(summary.currentEffectiveTaxRate)}
-          subtitle={`In ${loc.name}`}
+          subtitle={`Fed + state + SS/Medicare in ${loc.name}`}
           color="amber"
           icon={TrendingUp}
         />

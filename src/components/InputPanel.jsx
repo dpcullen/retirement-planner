@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { User, DollarSign, TrendingUp, MapPin, Receipt, Plus, X } from 'lucide-react';
 import { Card, SectionHeader, InputField, SelectField, ToggleGroup, SliderField } from './ui';
 import { LOCATIONS } from '../data/defaults';
 import { formatCurrencyFull } from '../utils/formatters';
+import { calculateAnnualTax } from '../engine/taxEngine';
 
 const locationOptions = Object.entries(LOCATIONS).map(([key, loc]) => ({
   value: key,
@@ -132,6 +133,22 @@ export default function InputPanel({ scenario, onChange }) {
     .filter(cat => scenario.retirementAge >= cat.startAge && scenario.retirementAge <= cat.endAge)
     .reduce((sum, cat) => sum + cat.monthly, 0);
 
+  const takeHomePay = useMemo(() => {
+    const taxDeferredContrib = scenario.monthlyContribution * 12 * (scenario.taxDeferredPercent / 100);
+    const taxResult = calculateAnnualTax(scenario.salary, scenario.location, scenario.filingStatus, taxDeferredContrib);
+    const annualTax = taxResult.totalTax;
+    const annualExpenses = currentTotal * 12;
+    const netIncome = scenario.salary - annualTax;
+    const available = netIncome - annualExpenses;
+    return {
+      grossMonthly: Math.round(scenario.salary / 12),
+      taxMonthly: Math.round(annualTax / 12),
+      expenseMonthly: currentTotal,
+      availableMonthly: Math.round(available / 12),
+      effectiveRate: taxResult.effectiveRate,
+    };
+  }, [scenario.salary, scenario.location, scenario.filingStatus, scenario.taxDeferredPercent, scenario.monthlyContribution, currentTotal]);
+
   return (
     <div className="space-y-3">
       <Section title="Personal Details" subtitle="Age, status & location" icon={User} defaultOpen={true}>
@@ -170,20 +187,12 @@ export default function InputPanel({ scenario, onChange }) {
 
       <Section title="Income" subtitle="Salary & government benefits" icon={DollarSign}>
         <InputField
-          label="Your Annual Salary"
+          label="Household Income"
           value={scenario.salary}
           onChange={set('salary')}
           prefix={sym}
-          tooltip="Gross annual salary before taxes"
+          tooltip="Total gross household income before taxes (combine both salaries if married)"
         />
-        {scenario.filingStatus === 'married' && (
-          <InputField
-            label="Partner's Annual Salary"
-            value={scenario.partnerSalary}
-            onChange={set('partnerSalary')}
-            prefix={sym}
-          />
-        )}
         <SliderField
           label="Annual Salary Growth"
           value={scenario.salaryGrowth}
@@ -224,7 +233,7 @@ export default function InputPanel({ scenario, onChange }) {
               value={scenario.socialSecurityMonthly}
               onChange={set('socialSecurityMonthly')}
               prefix={sym}
-              tooltip="Estimated monthly Social Security benefit"
+              tooltip="Estimated monthly Social Security benefit. $2,000 is a reasonable average estimate."
             />
           </div>
         )}
@@ -300,6 +309,29 @@ export default function InputPanel({ scenario, onChange }) {
           prefix={sym}
           tooltip="Total monthly savings across all accounts"
         />
+
+        <div className="rounded-lg bg-gradient-to-br from-primary-50 to-emerald-50 border border-primary-100 p-3 space-y-1.5">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Monthly Take-Home Estimate</p>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Gross income</span>
+            <span className="font-medium text-slate-700">{formatCurrencyFull(takeHomePay.grossMonthly, sym)}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Taxes (fed + state + FICA)</span>
+            <span className="font-medium text-rose-600">-{formatCurrencyFull(takeHomePay.taxMonthly, sym)}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-slate-500">Expenses</span>
+            <span className="font-medium text-rose-600">-{formatCurrencyFull(takeHomePay.expenseMonthly, sym)}</span>
+          </div>
+          <div className="border-t border-primary-200 pt-1.5 flex justify-between text-xs">
+            <span className="font-semibold text-slate-700">Available for savings</span>
+            <span className={`font-bold ${takeHomePay.availableMonthly >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {formatCurrencyFull(takeHomePay.availableMonthly, sym)}/mo
+            </span>
+          </div>
+        </div>
+
         <div className="space-y-2 pt-2">
           <p className="text-xs font-medium text-slate-500">
             Account Allocation {isCanada ? '(RRSP / TFSA / Taxable)' : '(401k / Roth / Taxable)'}
@@ -360,7 +392,7 @@ export default function InputPanel({ scenario, onChange }) {
           />
         </div>
         <div className="space-y-2 pt-2">
-          <p className="text-xs font-medium text-slate-500">Asset Allocation</p>
+          <p className="text-xs font-medium text-slate-500">Asset Allocation (Now)</p>
           <SliderField
             label="Stocks"
             value={scenario.stockPercent}
@@ -398,6 +430,51 @@ export default function InputPanel({ scenario, onChange }) {
             }}
           />
           <SliderField label="Cash" value={scenario.cashPercent} onChange={() => {}} />
+        </div>
+        <div className="space-y-2 pt-2">
+          <p className="text-xs font-medium text-slate-500">Asset Allocation (At Retirement)</p>
+          <p className="text-[10px] text-slate-400">Allocation gradually shifts from now to retirement age</p>
+          <SliderField
+            label="Stocks"
+            value={scenario.retStockPercent ?? scenario.stockPercent}
+            onChange={(v) => {
+              const bondAndCash = 100 - v;
+              const retBond = scenario.retBondPercent ?? scenario.bondPercent;
+              const retCash = scenario.retCashPercent ?? scenario.cashPercent;
+              const ratio = retBond + retCash;
+              if (ratio === 0) {
+                onChange({ ...scenario, retStockPercent: v, retBondPercent: Math.round(bondAndCash * 0.8), retCashPercent: bondAndCash - Math.round(bondAndCash * 0.8) });
+              } else {
+                onChange({
+                  ...scenario,
+                  retStockPercent: v,
+                  retBondPercent: Math.round((retBond / ratio) * bondAndCash),
+                  retCashPercent: bondAndCash - Math.round((retBond / ratio) * bondAndCash),
+                });
+              }
+            }}
+          />
+          <SliderField
+            label="Bonds"
+            value={scenario.retBondPercent ?? scenario.bondPercent}
+            onChange={(v) => {
+              const stockAndCash = 100 - v;
+              const retStock = scenario.retStockPercent ?? scenario.stockPercent;
+              const retCash = scenario.retCashPercent ?? scenario.cashPercent;
+              const ratio = retStock + retCash;
+              if (ratio === 0) {
+                onChange({ ...scenario, retBondPercent: v, retStockPercent: Math.round(stockAndCash * 0.9), retCashPercent: stockAndCash - Math.round(stockAndCash * 0.9) });
+              } else {
+                onChange({
+                  ...scenario,
+                  retBondPercent: v,
+                  retStockPercent: Math.round((retStock / ratio) * stockAndCash),
+                  retCashPercent: stockAndCash - Math.round((retStock / ratio) * stockAndCash),
+                });
+              }
+            }}
+          />
+          <SliderField label="Cash" value={scenario.retCashPercent ?? scenario.cashPercent} onChange={() => {}} />
         </div>
       </Section>
     </div>

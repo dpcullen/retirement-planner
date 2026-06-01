@@ -1,15 +1,32 @@
 import { calculateAnnualTax } from './taxEngine';
 import { LOCATIONS } from '../data/defaults';
 
-function getExpectedReturn(scenario) {
+function getExpectedReturn(scenario, age) {
   const stockReturn = 0.08;
   const bondReturn = 0.04;
   const cashReturn = 0.02;
-  return (
-    (scenario.stockPercent / 100) * stockReturn +
-    (scenario.bondPercent / 100) * bondReturn +
-    (scenario.cashPercent / 100) * cashReturn
-  );
+
+  const yearsToRetirement = scenario.retirementAge - scenario.currentAge;
+  const yearsFromStart = age - scenario.currentAge;
+
+  let stockPct, bondPct, cashPct;
+
+  if (age >= scenario.retirementAge) {
+    stockPct = scenario.retStockPercent ?? scenario.stockPercent;
+    bondPct = scenario.retBondPercent ?? scenario.bondPercent;
+    cashPct = scenario.retCashPercent ?? scenario.cashPercent;
+  } else if (yearsToRetirement <= 0) {
+    stockPct = scenario.stockPercent;
+    bondPct = scenario.bondPercent;
+    cashPct = scenario.cashPercent;
+  } else {
+    const progress = yearsFromStart / yearsToRetirement;
+    stockPct = scenario.stockPercent + ((scenario.retStockPercent ?? scenario.stockPercent) - scenario.stockPercent) * progress;
+    bondPct = scenario.bondPercent + ((scenario.retBondPercent ?? scenario.bondPercent) - scenario.bondPercent) * progress;
+    cashPct = 100 - stockPct - bondPct;
+  }
+
+  return (stockPct / 100) * stockReturn + (bondPct / 100) * bondReturn + (Math.max(0, cashPct) / 100) * cashReturn;
 }
 
 function getAnnualContributionLimits(locationKey) {
@@ -36,7 +53,6 @@ export function runProjection(scenario) {
   const currentYear = new Date().getFullYear();
   const loc = LOCATIONS[scenario.location] || LOCATIONS.seattle;
   const isCanada = loc.country === 'CA';
-  const returnRate = getExpectedReturn(scenario);
   const inflation = scenario.inflationRate / 100;
   const salaryGrowth = scenario.salaryGrowth / 100;
   const limits = getAnnualContributionLimits(scenario.location);
@@ -65,11 +81,7 @@ export function runProjection(scenario) {
     const expenses = getAnnualExpensesAtAge(scenario, age, yearsFromNow, inflation);
 
     if (!isRetired) {
-      const mySalary = scenario.salary * Math.pow(1 + salaryGrowth, yearsFromNow);
-      const partnerSalary = scenario.filingStatus === 'married'
-        ? scenario.partnerSalary * Math.pow(1 + salaryGrowth, yearsFromNow)
-        : 0;
-      grossIncome = mySalary + partnerSalary;
+      grossIncome = scenario.salary * Math.pow(1 + salaryGrowth, yearsFromNow);
 
       const annualContrib = scenario.monthlyContribution * 12;
       taxDeferredContrib = Math.min(
@@ -151,6 +163,7 @@ export function runProjection(scenario) {
       }
     }
 
+    const returnRate = getExpectedReturn(scenario, age);
     taxDeferredBalance *= (1 + returnRate);
     taxFreeBalance *= (1 + returnRate);
     taxableBalance *= (1 + returnRate);

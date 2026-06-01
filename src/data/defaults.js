@@ -44,7 +44,6 @@ export function createDefaultScenario(name, color) {
     filingStatus: 'single',
 
     salary: 100000,
-    partnerSalary: 0,
     salaryGrowth: 3,
     socialSecurityAge: 67,
     socialSecurityMonthly: 2000,
@@ -67,6 +66,10 @@ export function createDefaultScenario(name, color) {
     stockPercent: 70,
     bondPercent: 25,
     cashPercent: 5,
+
+    retStockPercent: 40,
+    retBondPercent: 50,
+    retCashPercent: 10,
 
     location: 'seattle',
   };

@@ -35,6 +35,18 @@ function migrateScenario(s) {
   delete s.mortgageTerm;
   delete s.propertyTaxRate;
   delete s.homeAppreciation;
+
+  // Merge partnerSalary into salary (household income)
+  if (s.partnerSalary) {
+    s.salary = (s.salary || 0) + s.partnerSalary;
+    delete s.partnerSalary;
+  }
+
+  // Add default retirement allocation if missing
+  if (s.retStockPercent == null) s.retStockPercent = 40;
+  if (s.retBondPercent == null) s.retBondPercent = 50;
+  if (s.retCashPercent == null) s.retCashPercent = 10;
+
   return s;
 }
 
